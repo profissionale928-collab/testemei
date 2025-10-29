@@ -325,10 +325,8 @@ function formatarTelefone(numero, countryCode = '55') {
     if (numLimpo.length === 0) return 'N/A';
 
     // Se o número começar com o código do país (ex: 55 para Brasil), removemos
-    // Isso é comum em dados de API que retornam o número completo.
-    // **IMPORTANTE:** O DDD é o que vem logo após o código do país.
-    // Se o número limpo for maior que 11 dígitos, e começar com o countryCode,
-    // removemos o countryCode para que o número restante (DDD + Número) possa ser formatado.
+    // o código do país para que o número restante (DDD + Número) possa ser formatado.
+    // Isso é feito apenas se o número for muito longo (ex: 13 dígitos)
     if (countryCode && numLimpo.startsWith(countryCode) && numLimpo.length > 11) {
         numLimpo = numLimpo.substring(countryCode.length);
     }
@@ -344,15 +342,11 @@ function formatarTelefone(numero, countryCode = '55') {
         const parte1 = numLimpo.substring(2, 6);
         const parte2 = numLimpo.substring(6, 10);
         return `(${ddd}) ${parte1}-${parte2}`;
-    } else if (numLimpo.length >= 8) {
-        // Se for um número que não se encaixa no padrão de 10 ou 11 dígitos (com DDD),
-        // mas tem pelo menos 8 dígitos, retornamos o número formatado de forma simples
+    } else {
+        // Se não for possível formatar como BR, retornamos o número limpo completo
         // para evitar truncamento.
         return numLimpo;
     }
-    
-    // Se for um número muito curto (menos de 8 dígitos), retornamos o número limpo
-    return numLimpo;
 }
 
 // Função para formatar CNPJ
