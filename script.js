@@ -54,7 +54,7 @@ async function handleSearch(e) {
             'founded.gte': dataInicioISO,
             'founded.lte': dataFimISO,
             'company.simei.optant.eq': 'true', // Filtro MEI reativado
-            'limit': '1000' // Limite máximo solicitado
+            'limit': '10' // Limite máximo solicitado
         });
 
         const url = `${API_BASE_URL}?${params.toString()}`;
@@ -320,29 +320,35 @@ function formatarTelefone(numero, countryCode = '55') {
     if (!numero) return 'N/A';
     
     // Remove tudo que não é dígito
-    const numLimpo = numero.replace(/\D/g, '');
+    let numLimpo = numero.replace(/\D/g, '');
     
     if (numLimpo.length === 0) return 'N/A';
 
-    // Tenta formatar como telefone brasileiro (DDD + 8 ou 9 dígitos)
-    if (numLimpo.length >= 8) {
-        // Exemplo: 11999999999 -> (11) 99999-9999
-        // Exemplo: 1188888888 -> (11) 8888-8888
-        const ddd = numLimpo.substring(0, 2);
-        let parte1, parte2;
-        
-        if (numLimpo.length === 11) { // Celular com 9 dígitos
-            parte1 = numLimpo.substring(2, 7);
-            parte2 = numLimpo.substring(7, 11);
-            return `(${ddd}) ${parte1}-${parte2}`;
-        } else if (numLimpo.length === 10) { // Fixo ou celular antigo
-            parte1 = numLimpo.substring(2, 6);
-            parte2 = numLimpo.substring(6, 10);
-            return `(${ddd}) ${parte1}-${parte2}`;
-        }
+    // Se o número começar com o código do país (ex: 55 para Brasil), removemos
+    // Isso é comum em dados de API que retornam o número completo.
+    if (countryCode && numLimpo.startsWith(countryCode)) {
+        numLimpo = numLimpo.substring(countryCode.length);
     }
     
-    // Se não for possível formatar como BR, retorna o número limpo
+    // O número de telefone no Brasil (com DDD) tem 10 ou 11 dígitos.
+    if (numLimpo.length === 11) { // Celular com 9 dígitos (ex: 11999999999)
+        const ddd = numLimpo.substring(0, 2);
+        const parte1 = numLimpo.substring(2, 7);
+        const parte2 = numLimpo.substring(7, 11);
+        return `(${ddd}) ${parte1}-${parte2}`;
+    } else if (numLimpo.length === 10) { // Fixo ou celular antigo (ex: 1188888888)
+        const ddd = numLimpo.substring(0, 2);
+        const parte1 = numLimpo.substring(2, 6);
+        const parte2 = numLimpo.substring(6, 10);
+        return `(${ddd}) ${parte1}-${parte2}`;
+    } else if (numLimpo.length >= 8) {
+        // Se for um número que não se encaixa no padrão de 10 ou 11 dígitos (com DDD),
+        // mas tem pelo menos 8 dígitos, retornamos o número formatado de forma simples
+        // para evitar truncamento.
+        return numLimpo;
+    }
+    
+    // Se for um número muito curto (menos de 8 dígitos), retornamos o número limpo
     return numLimpo;
 }
 
