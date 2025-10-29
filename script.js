@@ -54,7 +54,7 @@ async function handleSearch(e) {
             'founded.gte': dataInicioISO,
             'founded.lte': dataFimISO,
             'company.simei.optant.eq': 'true', // Filtro MEI reativado
-            'limit': '10' // Limite máximo solicitado
+            'limit': '1000' // Limite máximo solicitado
         });
 
         const url = `${API_BASE_URL}?${params.toString()}`;
@@ -97,25 +97,29 @@ async function handleSearch(e) {
 
 // Função de utilidade para extrair o telefone de um registro
 function extractPhone(empresa) {
-    // Tenta extrair o telefone de diferentes campos, priorizando o campo 'phone' ou 'phones'
+    let phone = 'N/A';
+    // Tenta extrair o telefone de diferentes campos
     const phoneData = empresa.company?.phone || empresa.phones?.[0] || empresa.phone;
 
     if (typeof phoneData === 'string' && phoneData.trim() !== '') {
-        return phoneData;
-    } else if (phoneData && typeof phoneData === 'object' && (phoneData.number || phoneData.value)) {
-        // Se for um objeto com 'number' ou 'value'
-        return phoneData.number || phoneData.value;
+        phone = phoneData;
+    } else if (phoneData && typeof phoneData === 'object') {
+        // A API CNPJjá pode retornar um objeto de telefone com 'number' e 'countryCode'
+        if (phoneData.number) {
+            // Formata o número de telefone, se possível
+            phone = formatarTelefone(phoneData.number, phoneData.countryCode);
+        } else if (phoneData.value) {
+            phone = formatarTelefone(phoneData.value);
+        }
     } else if (Array.isArray(empresa.phones) && empresa.phones.length > 0) {
-        // Se for um array de telefones
         const firstPhone = empresa.phones[0];
         if (typeof firstPhone === 'string' && firstPhone.trim() !== '') {
-            return firstPhone;
+            phone = formatarTelefone(firstPhone);
         } else if (firstPhone && (firstPhone.number || firstPhone.value)) {
-            return firstPhone.number || firstPhone.value;
+            phone = formatarTelefone(firstPhone.number || firstPhone.value, firstPhone.countryCode);
         }
     }
-    // Tenta extrair de 'address.phone' como último recurso
-    return empresa.address?.phone || 'N/A';
+    return phone;
 }
 
 // Função de utilidade para extrair o email de um registro
@@ -139,39 +143,36 @@ function extractEmail(empresa) {
     return email;
 }
 
-// Função para exportar emails
-function exportEmails() {
+// Função para exportar dados completos (CNPJ, Razão Social, Email, Telefone, etc) para CSV
+function exportData() {
     if (allResults.length === 0) {
         alert('Nenhum resultado para exportar.');
         return;
     }
 
     // Cria o cabeçalho do CSV
-    const header = "CNPJ;Telefone;Email\n";
-
-    // Mapeia os resultados para o formato CSV
-    const csvLines = allResults.map(empresa => {
-        const cnpj = formatarCNPJ(empresa.taxId || 'N/A');
-        const telefone = extractPhone(empresa);
+    const header = ['CNPJ', 'Razão Social', 'Email', 'Telefone', 'Data de Abertura', 'Status'].join(';');
+    
+    const dataLines = allResults.map(empresa => {
+        const cnpj = empresa.taxId || 'N/A';
+        const razaoSocial = empresa.company?.name || 'N/A';
         const email = extractEmail(empresa);
-        
-        // Substituir quebras de linha e ponto e vírgula dentro dos campos para evitar problemas no CSV
-        const cleanCnpj = cnpj.replace(/[\n;]/g, ' ');
-        const cleanTelefone = telefone.replace(/[\n;]/g, ' ');
-        const cleanEmail = email.replace(/[\n;]/g, ' ');
-        
-        return `${cleanCnpj};${cleanTelefone};${cleanEmail}`;
+        const telefone = extractPhone(empresa); // Novo campo
+        const dataAbertura = formatarData(empresa.founded);
+        const status = empresa.status?.text || 'N/A';
+
+        // Usa aspas duplas para encapsular campos que podem conter o separador (e-mail, razão social)
+        return [
+            `"${formatarCNPJ(cnpj)}"`,
+            `"${razaoSocial}"`,
+            `"${email}"`,
+            `"${telefone}"`,
+            `"${dataAbertura}"`,
+            `"${status}"`
+        ].join(';');
     });
 
-    // Filtra linhas onde o CNPJ, Telefone e Email não são 'N/A' (pelo menos um deve ser válido)
-    const validLines = csvLines.filter(line => !line.endsWith('N/A;N/A;N/A'));
-
-    if (validLines.length === 0) {
-        alert('Nenhum dado válido (CNPJ, Telefone ou Email) encontrado para exportar.');
-        return;
-    }
-
-    const csvContent = header + validLines.join('\n');
+    const csvContent = [header, ...dataLines].join('\n');
     
     // Cria um Blob para download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
@@ -180,7 +181,7 @@ function exportEmails() {
     // Cria um link temporário para iniciar o download
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'empresas_mei_export.csv'; // Altera o nome do arquivo e a extensão para CSV
+    a.download = 'empresas_mei_export.csv';
     document.body.appendChild(a);
     a.click();
     
@@ -188,7 +189,48 @@ function exportEmails() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert(`Exportação concluída! ${validLines.length} registro(s) exportado(s) para "empresas_mei_export.csv".`);csv".`);
+    alert(`Exportação concluída! ${allResults.length} registro(s) exportado(s) para "empresas_mei_export.csv".`);
+}
+
+// Função para exportar emails (mantida para compatibilidade, mas agora chama exportData)
+function exportEmails() {
+    exportData();
+}
+
+// Função para exibir resultados
+function exportEmails() {
+    if (allResults.length === 0) {
+        alert('Nenhum resultado para exportar.');
+        return;
+    }
+
+    const emails = allResults
+        .map(empresa => extractEmail(empresa))
+        .filter(email => email !== 'N/A');
+
+    if (emails.length === 0) {
+        alert('Nenhum email válido encontrado para exportar.');
+        return;
+    }
+
+    const emailsText = emails.join('\n');
+    
+    // Cria um Blob para download
+    const blob = new Blob([emailsText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    // Cria um link temporário para iniciar o download
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'emails_mei_export.txt';
+    document.body.appendChild(a);
+    a.click();
+    
+    // Limpa o link temporário e o URL do objeto
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    alert(`Exportação concluída! ${emails.length} e-mail(s) exportado(s) para "emails_mei_export.txt".`);
 }
 
 // Função para exibir resultados
@@ -204,7 +246,7 @@ function displayResults(results) {
         const cnpj = empresa.taxId || 'N/A';
         const razaoSocial = empresa.company?.name || 'N/A';
         const email = extractEmail(empresa); // Usa a função de utilidade
-        const telefone = extractPhone(empresa);
+        const telefone = extractPhone(empresa); // Novo campo
         const dataAbertura = formatarData(empresa.founded);
         const status = empresa.status?.text || 'N/A';
         const statusClass = status === 'Ativa' ? 'status-active' : 'status-inactive';
@@ -273,6 +315,37 @@ function showLoading(show) {
     }
 }
 
+// Função para formatar telefone
+function formatarTelefone(numero, countryCode = '55') {
+    if (!numero) return 'N/A';
+    
+    // Remove tudo que não é dígito
+    const numLimpo = numero.replace(/\D/g, '');
+    
+    if (numLimpo.length === 0) return 'N/A';
+
+    // Tenta formatar como telefone brasileiro (DDD + 8 ou 9 dígitos)
+    if (numLimpo.length >= 8) {
+        // Exemplo: 11999999999 -> (11) 99999-9999
+        // Exemplo: 1188888888 -> (11) 8888-8888
+        const ddd = numLimpo.substring(0, 2);
+        let parte1, parte2;
+        
+        if (numLimpo.length === 11) { // Celular com 9 dígitos
+            parte1 = numLimpo.substring(2, 7);
+            parte2 = numLimpo.substring(7, 11);
+            return `(${ddd}) ${parte1}-${parte2}`;
+        } else if (numLimpo.length === 10) { // Fixo ou celular antigo
+            parte1 = numLimpo.substring(2, 6);
+            parte2 = numLimpo.substring(6, 10);
+            return `(${ddd}) ${parte1}-${parte2}`;
+        }
+    }
+    
+    // Se não for possível formatar como BR, retorna o número limpo
+    return numLimpo;
+}
+
 // Função para formatar CNPJ
 function formatarCNPJ(cnpj) {
     if (!cnpj || cnpj === 'N/A') return cnpj;
@@ -310,7 +383,7 @@ searchForm.addEventListener('submit', handleSearch);
 // Adiciona o listener para o novo botão de exportar
 document.addEventListener('click', function(e) {
     if (e.target.id === 'btnExportEmails') {
-        exportEmails();
+        exportData(); // Usa a nova função de exportação
     }
 });
 
